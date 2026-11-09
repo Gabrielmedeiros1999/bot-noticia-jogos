@@ -13,6 +13,9 @@ services:
       # Segredos vêm do arquivo .env (nunca escritos aqui)
       - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
       - DISCORD_ERROR_WEBHOOK_URL=${DISCORD_ERROR_WEBHOOK_URL}
+      - DISCORD_DEALS_WEBHOOK_URL=${DISCORD_DEALS_WEBHOOK_URL}
+      - DISCORD_PLANS_WEBHOOK_URL=${DISCORD_PLANS_WEBHOOK_URL}
+      - PLAN_FORM_URL=${PLAN_FORM_URL}
     volumes:
       - n8n_data:/home/node/.n8n
 

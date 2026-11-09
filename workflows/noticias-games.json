@@ -1,0 +1,252 @@
+{
+  "name": "Noticias Games",
+  "nodes": [
+    {
+      "parameters": {
+        "url": "https://www.pcgamer.com/feeds.xml",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "a5ab903d-5bc4-4667-8e9f-de4171a6603c",
+      "name": "RSS PC Gamer",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=  {{ $env.DISCORD_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  username: \"Game News\",\n  embeds: [{\n    title: $json.title,\n    url: $json.link,\n    description: $json.resumo,\n    color: $json.cor,\n    timestamp: $json.isoDate,\n    footer: { text: $json.categoria + \" • PC Gamer\" }\n  }]\n}) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1168,
+        32
+      ],
+      "id": "b1c7a8a5-2188-4053-a8c8-ac699dc919ed",
+      "name": "Enviar Discord",
+      "retryOnFail": true,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "//Limite de itens noticias\nconst MAX_ITENS = 10;\n\n// Só passam notícias que citem pelo menos uma destas palavras\nconst PALAVRAS_CHAVE = [\n  'zelda', 'mario', 'pokemon', 'gta', 'playstation', 'ps5', 'xbox',\n  'nintendo', 'switch', 'steam', 'valve', 'release', 'launch', 'rpg',\n  'review', 'update', 'dlc', 'patch', 'trailer', 'announced', 'steam deck',\n  'pc', 'ps4', 'indie', 'multiplayer', 'free'\n];\n\n// Regras de categoria (a primeira que combinar vence) + cor do embed\nconst CATEGORIAS = [\n  { nome: 'Review',     cor: 3447003,  termos: ['review'] },\n  { nome: 'Promoção',   cor: 16705372, termos: ['sale', 'deal', 'discount', 'free', 'giveaway'] },\n  { nome: 'Lançamento', cor: 5763719,  termos: ['release', 'launch', 'announced', 'revealed', 'trailer'] },\n  { nome: 'Indústria',  cor: 15548997, termos: ['layoffs', 'studio', 'acquisition', 'acquires'] },\n];\nconst CATEGORIA_PADRAO = { nome: 'Geral', cor: 9807270 };\n\n//evita falsos positivos (ex.: \"sale\" dentro de \"wholesale\")\nconst contem = (texto, termos) =>\n  termos.some(t => new RegExp(`\\\\b${t}\\\\b`, 'i').test(texto));\n\nconst resultado = [];\n\nfor (const item of $input.all()) {\n  const n = item.json;\n\n  // Validação: descarta itens sem título, link ou data válida\n  if (!n.title || !n.link || isNaN(Date.parse(n.isoDate))) continue;\n\n  const texto = `${n.title} ${n.contentSnippet || ''}`;\n\n  // Filtro por palavras-chave\n  if (!contem(texto, PALAVRAS_CHAVE)) continue;\n\n  // Classificação por categoria\n  const cat = CATEGORIAS.find(c => contem(texto, c.termos)) || CATEGORIA_PADRAO;\n\n  resultado.push({\n    json: {\n      title: n.title,\n      link: n.link,\n      resumo: (n.contentSnippet || '').slice(0, 300),\n      isoDate: n.isoDate,\n      categoria: cat.nome,\n      cor: cat.cor,\n    },\n  });\n}\n\n// Ordena do mais novo para o mais antigo e limita a quantidade\nresultado.sort((a, b) => Date.parse(b.json.isoDate) - Date.parse(a.json.isoDate));\n\nreturn resultado.slice(0, MAX_ITENS);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        32
+      ],
+      "id": "9e4cfd70-e6a5-4433-b09d-63f6038c8f1a",
+      "name": "Filtrar e Classificar"
+    },
+    {
+      "parameters": {
+        "operation": "removeItemsSeenInPreviousExecutions",
+        "dedupeValue": "={{ $json.link }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [
+        944,
+        32
+      ],
+      "id": "e19bfe07-b883-48d5-8cb8-2e75885291c0",
+      "name": "Remover Já Enviadas"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "e6fd9a50-cb22-4a66-be7b-84f434d36987",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        544,
+        16
+      ],
+      "id": "f6da6660-dcf0-4119-81b0-7517e260f3fd",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "url": "https://www.eurogamer.net/feed",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        256,
+        224
+      ],
+      "id": "15716b86-c6b0-4746-b4b8-3d583434322a",
+      "name": "Eurogamer",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "url": "https://www.rockpapershotgun.com/feed/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        416
+      ],
+      "id": "bb94e482-477e-458b-a5a1-ae745e204f7e",
+      "name": "Rock Paper Shotgun",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Enviar Discord": {
+      "main": [
+        []
+      ]
+    },
+    "RSS PC Gamer": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar e Classificar": {
+      "main": [
+        [
+          {
+            "node": "Remover Já Enviadas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remover Já Enviadas": {
+      "main": [
+        [
+          {
+            "node": "Enviar Discord",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "RSS PC Gamer",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Eurogamer",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Rock Paper Shotgun",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Filtrar e Classificar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Eurogamer": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Rock Paper Shotgun": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "tULfiNh4WhY4S3VS",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "9941d8fb-b125-4c2e-ad4a-3fc353c4e407",
+  "meta": {
+    "instanceId": "c275af9bd7fac45316fdf8c193b52c1958cb843f02e77de4688c8af416b465b4"
+  },
+  "nodeGroups": [],
+  "id": "BxTTB4O8kYTgb4kB",
+  "tags": []
+}

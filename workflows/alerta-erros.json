@@ -1,0 +1,65 @@
+{
+  "name": "Alerta de Erros",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "7646b1c8-29d1-4ea3-a218-b165298bb6b5",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_ERROR_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "=json",
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "jsonBody": "={{ JSON.stringify({\n  username: \"Alerta n8n\",\n  embeds: [{\n    title: \"⚠️ Falha no workflow: \" + $json.workflow.name,\n    description: $json.execution.url ? \"[Abrir execução](\" + $json.execution.url + \")\" : \"\",\n    color: 15548997,\n    fields: [\n      { name: \"Nó com erro\", value: String($json.execution.lastNodeExecuted || \"desconhecido\") },\n      { name: \"Mensagem\", value: String($json.execution.error.message || \"sem mensagem\").slice(0, 1000) }\n    ],\n    timestamp: new Date().toISOString()\n  }]\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        224,
+        0
+      ],
+      "id": "c18b5a43-ced2-4ef6-972e-60a0eb4a6368",
+      "name": "HTTP Request"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "2d92aa9e-9af8-406f-a282-009e1b40dddb",
+  "meta": {
+    "instanceId": "c275af9bd7fac45316fdf8c193b52c1958cb843f02e77de4688c8af416b465b4"
+  },
+  "nodeGroups": [],
+  "id": "tULfiNh4WhY4S3VS",
+  "tags": []
+}

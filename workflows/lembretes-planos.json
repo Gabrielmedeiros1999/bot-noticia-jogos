@@ -1,0 +1,466 @@
+{
+  "name": "Lembretes de Planos",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Novo plano de jogo",
+        "formDescription": "Cadastre um plano e receba um lembrete no Discord antes do horário.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Jogo",
+              "placeholder": "Elden Ring",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Data",
+              "fieldType": "date",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Hora (HH:MM)",
+              "placeholder": "21:30",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Observação",
+              "fieldType": "textarea",
+              "placeholder": "Com quem, onde..."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "id": "b5a5fd65-690a-4689-9d2e-e332c2e1cd58",
+      "name": "On form submission",
+      "webhookId": "a46cbc9c-e8c8-4635-8048-114ce845a18a"
+    },
+    {
+      "parameters": {
+        "jsCode": "const f = $input.first().json;\n\nconst jogo = String(f['Jogo'] || '').trim();\nconst data = String(f['Data'] || '').trim();            \nconst hora = String(f['Hora (HH:MM)'] || '').trim();\nconst observacao = String(f['Observação'] || '').trim();\n\n// Validação dos campos\nif (!jogo) throw new Error('Informe o nome do jogo.');\nif (!/^\\d{4}-\\d{2}-\\d{2}$/.test(data)) throw new Error('Data inválida: ' + data);\nif (!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(hora)) throw new Error('Hora inválida. Use HH:MM, ex.: 21:30');\n\n// Fuso de Brasília (UTC-3, sem horário de verão)\nconst quandoMs = Date.parse(`${data}T${hora}:00-03:00`);\nif (isNaN(quandoMs)) throw new Error('Data ou hora inválidas.');\nif (quandoMs < Date.now()) throw new Error('O horário informado já passou.');\n\nreturn [{\n  json: {\n    jogo,\n    observacao,\n    quando: new Date(quandoMs).toISOString(),\n    ts: Math.floor(quandoMs / 1000),   // usado pelo Discord para mostrar a hora local\n    status: 'pendente',\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ],
+      "id": "5bd9c830-c9fb-426d-8e14-640dc1e83ddc",
+      "name": "Validar Plano"
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "uHb2NIWfAFdn8WCX",
+          "mode": "list",
+          "cachedResultName": "planos_jogos",
+          "cachedResultUrl": "/projects/X6Ksrhv5juzfCutZ/datatables/uHb2NIWfAFdn8WCX"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "jogo": "={{ $json.jogo }}",
+            "quando": "={{ $json.quando }}",
+            "observacao": "={{ $json.observacao }}",
+            "status": "={{ $json.status }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "jogo",
+              "displayName": "jogo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "quando",
+              "displayName": "quando",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "observacao",
+              "displayName": "observacao",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        0
+      ],
+      "id": "325d8266-18b0-4b70-92d0-0b481e6bfa34",
+      "name": "Salvar Plano"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_PLANS_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "=json",
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "jsonBody": "={{ JSON.stringify({\n  username: \"Game Planner\",\n  embeds: [{\n    title: \"✅ Plano cadastrado: \" + $('Validar Plano').item.json.jogo,\n    description: \"Quando: <t:\" + $('Validar Plano').item.json.ts + \":F>\",\n    color: 5763719,\n    fields: $('Validar Plano').item.json.observacao\n      ? [{ name: \"Observação\", value: $('Validar Plano').item.json.observacao.slice(0, 500) }]\n      : []\n  }]\n}) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        672,
+        0
+      ],
+      "id": "873887fe-561d-413f-aaa5-aeced1054bd2",
+      "name": "Confirmar no Discord",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -16,
+        192
+      ],
+      "id": "81a3b172-f15f-482c-9d87-7e8ee7e0809e",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "uHb2NIWfAFdn8WCX",
+          "mode": "list",
+          "cachedResultName": "planos_jogos",
+          "cachedResultUrl": "/projects/X6Ksrhv5juzfCutZ/datatables/uHb2NIWfAFdn8WCX"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "keyValue": "pendente"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        208,
+        192
+      ],
+      "id": "121e6ed0-a472-4774-aa33-69fbda3a0ee2",
+      "name": "Buscar Pendentes"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst LEMBRAR_ANTES_MIN = 30;      // avisa quando faltar até este tempo\nconst TOLERANCIA_ATRASO_MIN = 15;  // avisa se o horário passou há pouco\n\nconst agora = Date.now();\nconst resultado = [];\n\nfor (const item of $input.all()) {\n  const p = item.json;\n  const quandoMs = Date.parse(String(p.quando));\n\n  // Validação: descarta linhas sem id ou com data inválida\n  if (!p.id || isNaN(quandoMs)) continue;\n\n  // Só passa o que está dentro da janela de lembrete\n  const faltamMin = Math.round((quandoMs - agora) / 60000);\n  if (faltamMin > LEMBRAR_ANTES_MIN || faltamMin < -TOLERANCIA_ATRASO_MIN) continue;\n\n  resultado.push({\n    json: {\n      id: p.id,\n      jogo: p.jogo,\n      observacao: p.observacao || '',\n      ts: Math.floor(quandoMs / 1000),\n      faltamMin,\n    },\n  });\n}\n\n// O plano mais próximo primeiro\nresultado.sort((a, b) => a.json.ts - b.json.ts);\n\nreturn resultado;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        192
+      ],
+      "id": "683218de-42e6-4061-b4aa-a8fd7e03c48d",
+      "name": "Filtrar Planos Próximos"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_PLANS_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  username: \"Game Planner\",\n  embeds: [{\n    title: \"⏰ Hora de jogar: \" + $json.jogo,\n    description: \"Começa <t:\" + $json.ts + \":R> (<t:\" + $json.ts + \":t>)\",\n    color: 16705372,\n    fields: $json.observacao\n      ? [{ name: \"Observação\", value: $json.observacao.slice(0, 500) }]\n      : []\n  }]\n}) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        656,
+        192
+      ],
+      "id": "c5f8a319-2924-46b8-b60c-8a734dfd6bc2",
+      "name": "Enviar Lembrete",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "value": "uHb2NIWfAFdn8WCX",
+          "mode": "list",
+          "cachedResultName": "planos_jogos",
+          "cachedResultUrl": "/projects/X6Ksrhv5juzfCutZ/datatables/uHb2NIWfAFdn8WCX"
+        },
+        "filters": {
+          "conditions": [
+            {
+              "keyValue": "={{ $('Filtrar Planos Próximos').item.json.id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "lembrado"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "jogo",
+              "displayName": "jogo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "quando",
+              "displayName": "quando",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "observacao",
+              "displayName": "observacao",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        192
+      ],
+      "id": "f674781d-8249-42a3-93e5-40f387ab622b",
+      "name": "Marcar Como Lembrado"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -32,
+        384
+      ],
+      "id": "e000bcdc-784f-43d1-8c4d-bc8a65a49267",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_PLANS_WEBHOOK_URL }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "with_components",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  username: \"Game Planner\",\n  embeds: [{\n    title: \"🎮 Marque um plano de jogo com seus amigos\",\n    description: \"Clique no botão abaixo, preencha o jogo, a data e a hora, e eu aviso aqui no canal antes de começar.\",\n    color: 5763719\n  }],\n  components: [{\n    type: 1,\n    components: [{\n      type: 2,\n      style: 5,\n      label: \"Marcar plano\",\n      url: $env.PLAN_FORM_URL\n    }]\n  }]\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        192,
+        384
+      ],
+      "id": "f2e0517e-9136-4b1f-8560-1460b32957f7",
+      "name": "Publicar Botão de Plano"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Validar Plano",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar Plano": {
+      "main": [
+        [
+          {
+            "node": "Salvar Plano",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar Plano": {
+      "main": [
+        [
+          {
+            "node": "Confirmar no Discord",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Buscar Pendentes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Pendentes": {
+      "main": [
+        [
+          {
+            "node": "Filtrar Planos Próximos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar Planos Próximos": {
+      "main": [
+        [
+          {
+            "node": "Enviar Lembrete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Lembrete": {
+      "main": [
+        [
+          {
+            "node": "Marcar Como Lembrado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Publicar Botão de Plano",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "tULfiNh4WhY4S3VS",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "58c86d46-7854-47ae-ad73-097a64f6e9a8",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c275af9bd7fac45316fdf8c193b52c1958cb843f02e77de4688c8af416b465b4"
+  },
+  "nodeGroups": [],
+  "id": "F7n7WXl7Ug5ap0qQ",
+  "tags": []
+}

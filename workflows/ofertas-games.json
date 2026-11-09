@@ -1,0 +1,289 @@
+{
+  "name": "Ofertas Games",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "8f2026e0-4c60-4498-89d1-096984645aa2",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ===== CONFIGURAÇÃO (fácil de ajustar ao vivo) =====\nconst DESCONTO_MINIMO = 50;   // % mínimo de desconto\nconst METACRITIC_MIN = 70;    // nota mínima da crítica...\nconst STEAM_MIN = 80;         // ...ou % mínimo de avaliações positivas na Steam\nconst MAX_ITENS = 5;\n\nconst LOJAS = { '1': 'Steam', '7': 'GOG' };\n\n// Faixa de oferta conforme o desconto (a primeira que combinar vence)\nconst FAIXAS = [\n  { min: 90, nome: 'Imperdível', cor: 15548997 },\n  { min: 75, nome: 'Ótima oferta', cor: 16705372 },\n  { min: 0,  nome: 'Boa oferta', cor: 5763719 },\n];\n\nconst resultado = [];\n\nfor (const item of $input.all()) {\n  const n = item.json;\n\n  // Validação: descarta itens sem os campos essenciais\n  const preco = parseFloat(n.salePrice);\n  const original = parseFloat(n.normalPrice);\n  if (!n.dealID || !n.title || isNaN(preco) || isNaN(original)) continue;\n\n  // Filtro por desconto\n  const desconto = Math.round(parseFloat(n.savings));\n  if (isNaN(desconto) || desconto < DESCONTO_MINIMO) continue;\n\n  // Filtro por qualidade (nota da crítica OU avaliação dos jogadores)\n  const metacritic = parseInt(n.metacriticScore) || 0;\n  const steam = parseInt(n.steamRatingPercent) || 0;\n  if (metacritic < METACRITIC_MIN && steam < STEAM_MIN) continue;\n\n  const faixa = FAIXAS.find(f => desconto >= f.min) || FAIXAS[FAIXAS.length - 1];\n\n  resultado.push({\n    json: {\n      title: n.title,\n      link: 'https://www.cheapshark.com/redirect?dealID=' + encodeURIComponent(n.dealID),\n      loja: LOJAS[n.storeID] || 'Outra loja',\n      preco: preco.toFixed(2),\n      precoOriginal: original.toFixed(2),\n      desconto,\n      faixa: faixa.nome,\n      cor: faixa.cor,\n      thumb: n.thumb || '',\n      // Chave de deduplicação: se o preço mudar, vira uma notícia nova\n      chave: n.gameID + '-' + n.storeID + '-' + n.salePrice,\n    },\n  });\n}\n\n// Maiores descontos primeiro, limitado à quantidade configurada\nresultado.sort((a, b) => b.json.desconto - a.json.desconto);\n\nreturn resultado.slice(0, MAX_ITENS);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ],
+      "id": "4d25e51e-3da7-4769-81e0-a5d79332f63b",
+      "name": "Filtrar Ofertas"
+    },
+    {
+      "parameters": {
+        "url": "https://www.cheapshark.com/api/1.0/deals",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "storeID",
+              "value": "1,7"
+            },
+            {
+              "name": "onSale",
+              "value": "1"
+            },
+            {
+              "name": "upperPrice",
+              "value": "30"
+            },
+            {
+              "name": "pageSize",
+              "value": "60"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        448,
+        0
+      ],
+      "id": "97b31b20-194b-4a15-8320-bd6a69e67524",
+      "name": "CheapShark Ofertas",
+      "retryOnFail": true,
+      "waitBetweenTries": 1000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_DEALS_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "=json",
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "jsonBody": "={{ JSON.stringify({\n  username: \"Game Deals\",\n  embeds: [{\n    title: $json.title,\n    url: $json.link,\n    color: $json.cor,\n    thumbnail: $json.thumb ? { url: $json.thumb } : undefined,\n    fields: [\n      { name: \"Desconto\", value: \"-\" + $json.desconto + \"%\", inline: true },\n      { name: \"Preço\", value: \"US$ \" + $json.preco + \" (de US$ \" + $json.precoOriginal + \")\", inline: true },\n      { name: \"Loja\", value: $json.loja, inline: true }\n    ],\n    footer: { text: $json.faixa + \" • CheapShark\" }\n  }]\n}) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1120,
+        0
+      ],
+      "id": "deed036b-b3dc-4722-9eab-7a131fc56a4e",
+      "name": "Enviar Discord Ofertas",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "removeItemsSeenInPreviousExecutions",
+        "dedupeValue": "={{ $json.chave }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ],
+      "id": "72a52c6e-8ba1-49bb-ab03-a06ffea49506",
+      "name": "Remover Já Enviadas"
+    },
+    {
+      "parameters": {
+        "url": "https://blog.playstation.com/feed/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        384,
+        256
+      ],
+      "id": "c61a87c0-5ffe-40bf-9a98-cc85607ce10e",
+      "name": "RSS PlayStation Blog",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "const IDADE_MAX_DIAS = 7;   // ignora posts mais antigos que isso\nconst MAX_ITENS = 3;\nconst COR_PSN = 28881;      \n\n// Só passam posts cujo TÍTULO cite alguma destas palavras\nconst PALAVRAS_PROMO = [\n  'deals', 'deal', 'sale', 'discount', 'discounts',\n  'savings', 'promotion', 'black friday',\n];\n\n// \\b evita falsos positivos (ex.: \"sale\" dentro de \"wholesale\")\nconst contem = (texto, termos) =>\n  termos.some(t => new RegExp(`\\\\b${t}\\\\b`, 'i').test(texto));\n\nconst limite = IDADE_MAX_DIAS * 24 * 60 * 60 * 1000;\nconst resultado = [];\n\nfor (const item of $input.all()) {\n  const n = item.json;\n\n  // Validação: descarta itens sem título, link ou data válida\n  if (!n.title || !n.link || isNaN(Date.parse(n.isoDate))) continue;\n\n  // Filtro de data: só posts recentes\n  if (Date.now() - Date.parse(n.isoDate) > limite) continue;\n\n  // Filtro por palavras de promoção no título\n  if (!contem(n.title, PALAVRAS_PROMO)) continue;\n\n  resultado.push({\n    json: {\n      title: n.title,\n      link: n.link,\n      resumo: (n.contentSnippet || '').slice(0, 300),\n      isoDate: n.isoDate,\n      cor: COR_PSN,\n    },\n  });\n}\n\n// Mais recentes primeiro, limitado à quantidade configurada\nresultado.sort((a, b) => Date.parse(b.json.isoDate) - Date.parse(a.json.isoDate));\n\nreturn resultado.slice(0, MAX_ITENS);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        256
+      ],
+      "id": "b3056cfb-a147-4ac7-a336-71b19bf5ddce",
+      "name": "Filtrar Promoções PSN"
+    },
+    {
+      "parameters": {
+        "operation": "removeItemsSeenInPreviousExecutions",
+        "dedupeValue": "={{ $json.link }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [
+        832,
+        256
+      ],
+      "id": "9d80ac08-83be-4e92-a6fe-20198feeba1e",
+      "name": "Remover Já Enviadas PSN"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_DEALS_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  username: \"Game Deals\",\n  embeds: [{\n    title: \"🎮 Promoção PSN: \" + $json.title,\n    url: $json.link,\n    description: $json.resumo,\n    color: $json.cor,\n    timestamp: $json.isoDate,\n    footer: { text: \"PlayStation Blog • Promoção PSN\" }\n  }]\n}) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1056,
+        256
+      ],
+      "id": "d658cd86-0819-4b1c-8ab9-9a42ad0d9540",
+      "name": "Enviar Discord PSN",
+      "retryOnFail": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "CheapShark Ofertas",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS PlayStation Blog",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar Ofertas": {
+      "main": [
+        [
+          {
+            "node": "Remover Já Enviadas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CheapShark Ofertas": {
+      "main": [
+        [
+          {
+            "node": "Filtrar Ofertas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remover Já Enviadas": {
+      "main": [
+        [
+          {
+            "node": "Enviar Discord Ofertas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS PlayStation Blog": {
+      "main": [
+        [
+          {
+            "node": "Filtrar Promoções PSN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar Promoções PSN": {
+      "main": [
+        [
+          {
+            "node": "Remover Já Enviadas PSN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remover Já Enviadas PSN": {
+      "main": [
+        [
+          {
+            "node": "Enviar Discord PSN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "tULfiNh4WhY4S3VS",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "6d9ac50c-1627-4b60-b6ce-a8b9641f6d09",
+  "meta": {
+    "instanceId": "c275af9bd7fac45316fdf8c193b52c1958cb843f02e77de4688c8af416b465b4"
+  },
+  "nodeGroups": [],
+  "id": "FzPIpPobxaZb5dxP",
+  "tags": []
+}
